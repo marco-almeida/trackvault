@@ -43,14 +43,14 @@ func NewSpotifyClient() music.Provider {
 
 func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
 	http.HandleFunc("/spotify/callback", completeAuth)
-	go http.ListenAndServe(fmt.Sprintf("%s:%s", redirectHost, redirectPort), nil)
+	go http.ListenAndServe(fmt.Sprintf("%s:%s", redirectHost, redirectPort), nil) //nolint:errcheck
 
 	url := auth.AuthURL(state,
 		oauth2.SetAuthURLParam("code_challenge_method", pkce.MethodS256),
 		oauth2.SetAuthURLParam("code_challenge", codeChallenge),
 		oauth2.SetAuthURLParam("client_id", clientID),
 	)
-	fmt.Fprintln(os.Stdout, "Please log in to Spotify by visiting the following page in your browser:", url)
+	fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
 	err := utilsURL.OpenURL(url)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "could not open URL in browser:", err)
@@ -77,7 +77,7 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	client := spotify.New(auth.Client(r.Context(), tok))
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `
+	_, _ = fmt.Fprintf(w, `
         <html>
             <body>
                 <h2>Login completed!</h2>
