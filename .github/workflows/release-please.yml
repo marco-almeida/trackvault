@@ -18,3 +18,13 @@ jobs:
         with:
           token: ${{ secrets.MY_RELEASE_PLEASE_TOKEN }}
           release-type: go
+  
+      - name: Upload Release Artifact
+        if: ${{ steps.release.outputs.release_created }}
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: release # something here to upload only
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_RELEASE_PLEASE_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag_name }}
