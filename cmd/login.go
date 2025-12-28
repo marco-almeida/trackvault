@@ -10,12 +10,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/marco-almeida/trackvault/pkg/core"
-	"github.com/marco-almeida/trackvault/pkg/music"
 )
 
 const providerFlagName = "provider"
-
-var musicProviderClient music.Provider
 
 // loginCmd represents the login command
 var loginCmd = &cobra.Command{
@@ -33,7 +30,7 @@ var loginCmd = &cobra.Command{
 			Provider: provider,
 		}
 
-		musicProviderClient, err = core.Login(cmd.Context(), loginArgs)
+		_, err = core.Login(cmd.Context(), loginArgs)
 		if err != nil {
 			return fmt.Errorf("error logging in to provider %s: %w", provider, err)
 		}

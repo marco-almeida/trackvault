@@ -13,7 +13,7 @@ import (
 
 func vcsVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok {
-		if len(strings.TrimSpace(info.Main.Version)) != 0 {
+		if strings.TrimSpace(info.Main.Version) != "" {
 			return info.Main.Version
 		}
 	}
