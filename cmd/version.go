@@ -5,22 +5,22 @@ package cmd
 
 import (
 	"fmt"
-
 	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 func vcsVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok {
-		return info.Main.Version
+		if len(strings.TrimSpace(info.Main.Version)) != 0 {
+			return info.Main.Version
+		}
 	}
 	return version
 }
 
-var (
-	version = "dev"
-)
+var version = "dev"
 
 // versionCmd represents the version command
 var versionCmd = &cobra.Command{

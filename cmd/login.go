@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/marco-almeida/trackvault/pkg/core"
 	"github.com/marco-almeida/trackvault/pkg/music"
-
-	"github.com/spf13/cobra"
 )
 
 const providerFlagName = "provider"
@@ -26,7 +26,7 @@ var loginCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		provider, err := cmd.PersistentFlags().GetString(providerFlagName)
 		if err != nil {
-			return fmt.Errorf("error getting provider flag: %v", err)
+			return fmt.Errorf("error getting provider flag: %w", err)
 		}
 
 		loginArgs := core.LoginArgs{
@@ -35,7 +35,7 @@ var loginCmd = &cobra.Command{
 
 		musicProviderClient, err = core.Login(cmd.Context(), loginArgs)
 		if err != nil {
-			return fmt.Errorf("error logging in to provider %s: %v", provider, err)
+			return fmt.Errorf("error logging in to provider %s: %w", provider, err)
 		}
 		return nil
 	},

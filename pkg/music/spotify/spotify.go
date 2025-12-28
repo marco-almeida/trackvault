@@ -8,16 +8,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/grokify/go-pkce"
-	"github.com/marco-almeida/trackvault/pkg/music"
-	utilsURL "github.com/marco-almeida/trackvault/pkg/utils"
+	"github.com/zalando/go-keyring"
 	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"
+
+	"github.com/marco-almeida/trackvault/pkg/music"
+	utilsURL "github.com/marco-almeida/trackvault/pkg/utils"
 )
 
-const redirectHost = "127.0.0.1"
-const redirectPort = "43721"
-const clientID = "a0852cfbdbd24dcba2410c011ab29564"
+const (
+	redirectHost = "127.0.0.1"
+	redirectPort = "43721"
+	clientID     = "a0852cfbdbd24dcba2410c011ab29564"
+)
 
 var (
 	redirectURI     = fmt.Sprintf("http://%s:%s/spotify/callback", redirectHost, redirectPort)
@@ -62,7 +66,7 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	tok, err := auth.Token(r.Context(), state, r,
 		oauth2.SetAuthURLParam("code_verifier", codeVerifier))
 	if err != nil {
-		http.Error(w, "Couldn't get token", http.StatusForbidden)
+		http.Error(w, "couldn't get token", http.StatusForbidden)
 		fmt.Fprintln(os.Stderr, err)
 	}
 	if st := r.FormValue("state"); st != state {
@@ -71,6 +75,23 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	// use the token to get an authenticated client
 	client := spotify.New(auth.Client(r.Context(), tok))
-	fmt.Fprintf(w, "Login Completed! You can now close this window.")
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `
+        <html>
+            <body>
+                <h2>Login completed!</h2>
+                <p>You can now return to the terminal.</p>
+                <script>window.close()</script>
+            </body>
+        </html>
+    `)
+
+	// set password
+	err = keyring.Set("trackvault", "spotify", tok.RefreshToken)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "could not store refresh token in keyring:", err)
+	}
+
 	ch <- client
 }
