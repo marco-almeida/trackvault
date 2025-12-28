@@ -6,5 +6,4 @@ type Provider interface {
 	Login(context.Context, LoginArgs) error
 }
 
-type LoginArgs struct {
-}
+type LoginArgs struct{}

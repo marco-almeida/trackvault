@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/marco-almeida/trackvault/pkg/music"
@@ -22,8 +23,9 @@ func Login(ctx context.Context, args LoginArgs) (music.Provider, error) {
 		spotifyClient := spotify.NewSpotifyClient()
 		err := spotifyClient.Login(ctx, music.LoginArgs{})
 		if err != nil {
-			return nil, fmt.Errorf("error logging in to Spotify: %v", err)
+			return nil, fmt.Errorf("error logging in to Spotify: %w", err)
 		}
+		fmt.Fprintf(os.Stdout, "Successfully logged in to Spotify!\n")
 		return spotifyClient, nil
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", args.Provider)
