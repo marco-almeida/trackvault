@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/marco-almeida/trackvault/compare/v1.1.1...v1.1.2) (2025-12-28)
+
+
+### Bug Fixes
+
+* go install version fix ([#15](https://github.com/marco-almeida/trackvault/issues/15)) ([b90ebf4](https://github.com/marco-almeida/trackvault/commit/b90ebf42205279ca4a8827cd0f7f48b65eb49abb))
+
 ## [1.1.1](https://github.com/marco-almeida/trackvault/compare/v1.1.0...v1.1.1) (2025-12-28)
 
 
