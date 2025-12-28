@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/marco-almeida/trackvault/compare/v1.1.0...v1.1.1) (2025-12-28)
+
+
+### Bug Fixes
+
+* fix version command when used cli is installed via go install ([#13](https://github.com/marco-almeida/trackvault/issues/13)) ([449a322](https://github.com/marco-almeida/trackvault/commit/449a3226b1e8916257e086f68d43feccba69996f))
+
 ## [1.1.0](https://github.com/marco-almeida/trackvault/compare/v1.0.0...v1.1.0) (2025-12-28)
 
 
