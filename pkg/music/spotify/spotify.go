@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/google/uuid"
 	"github.com/grokify/go-pkce"
 	"github.com/marco-almeida/trackvault/pkg/music"
 	utilsURL "github.com/marco-almeida/trackvault/pkg/utils"
@@ -22,7 +23,7 @@ var (
 	redirectURI     = fmt.Sprintf("http://%s:%s/spotify/callback", redirectHost, redirectPort)
 	auth            = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopeUserReadPrivate), spotifyauth.WithClientID(clientID))
 	ch              = make(chan *spotify.Client)
-	state           = "abc123"
+	state           = uuid.New().String()
 	codeVerifier, _ = pkce.NewCodeVerifier(-1)
 	codeChallenge   = pkce.CodeChallengeS256(codeVerifier)
 )

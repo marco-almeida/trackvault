@@ -1,10 +1,11 @@
 /*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
+Copyright © 2025 Marco Almeida
 */
 package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/marco-almeida/trackvault/pkg/core"
 	"github.com/marco-almeida/trackvault/pkg/music"
@@ -44,7 +45,8 @@ func init() {
 	loginCmd.PersistentFlags().StringP(providerFlagName, "p", "", "Provider to login to")
 	err := loginCmd.MarkPersistentFlagRequired(providerFlagName)
 	if err != nil {
-		fmt.Println("Error marking flag required:", err)
+		fmt.Fprintln(os.Stderr, "Error marking flag required:", err)
+		os.Exit(1)
 	}
 	rootCmd.AddCommand(loginCmd)
 }
