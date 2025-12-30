@@ -2,6 +2,7 @@ package spotify
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -26,14 +27,14 @@ const (
 var (
 	redirectURI     = fmt.Sprintf("http://%s:%s/spotify/callback", redirectHost, redirectPort)
 	auth            = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopeUserReadPrivate), spotifyauth.WithClientID(clientID))
-	ch              = make(chan *spotify.Client)
+	ch              = make(chan *oauth2.Token)
 	state           = uuid.New().String()
 	codeVerifier, _ = pkce.NewCodeVerifier(-1)
 	codeChallenge   = pkce.CodeChallengeS256(codeVerifier)
 )
 
 type SpotifyClient struct {
-	Client *spotify.Client
+	client *spotify.Client
 }
 
 // NewSpotifyClient creates an empty SpotifyClient, it needs to be logged in later
@@ -41,7 +42,14 @@ func NewSpotifyClient() music.Provider {
 	return &SpotifyClient{}
 }
 
-func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) (*music.User, error) {
+// NewSpotifyClientFromToken creates a SpotifyClient from a refresh token
+func NewSpotifyClientFromToken(ctx context.Context, token oauth2.Token) music.Provider {
+	httpClient := auth.Client(ctx, &token)
+	spotifyClient := spotify.New(httpClient, spotify.WithRetry(true))
+	return &SpotifyClient{client: spotifyClient}
+}
+
+func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
 	http.HandleFunc("/spotify/callback", completeAuth)
 	go http.ListenAndServe(fmt.Sprintf("%s:%s", redirectHost, redirectPort), nil) //nolint:errcheck
 
@@ -50,22 +58,50 @@ func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) (*music
 		oauth2.SetAuthURLParam("code_challenge", codeChallenge),
 		oauth2.SetAuthURLParam("client_id", clientID),
 	)
-	fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
+	fmt.Println("Log in to Spotify by visiting the following URL in your browser:", url)
 	err := utilsURL.OpenURL(url)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "could not open URL in browser:", err)
 	}
 	// wait for auth to complete
-	client := <-ch
+	token := <-ch
+	if token == nil {
+		return fmt.Errorf("could not get token from callback")
+	}
+	s.client = spotify.New(auth.Client(ctx, token), spotify.WithRetry(true))
 
-	s.Client = client
-	clientUser, err := client.CurrentUser(ctx)
+	// store token in keyring
+	tokenJson, err := json.Marshal(token)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "could not marshal token to json:", err)
+	}
+
+	// store oauth token in OS
+	err = keyring.Set("trackvault", "spotify", string(tokenJson))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "could not store refresh token in keyring:", err)
+	}
+
+	return nil
+}
+
+func (s *SpotifyClient) ListPlaylistsAndLikes(ctx context.Context, args music.ListPlaylistsAndLikesArgs) ([]music.Playlist, error) {
+	user, err := s.client.CurrentUser(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("could not get current user: %w", err)
+	}
+	fmt.Printf("Listing playlists and likes for spotify user %s (%s)\n", user.DisplayName, user.ID)
+	return nil, nil
+}
+
+func (s *SpotifyClient) User(ctx context.Context) (*music.User, error) {
+	user, err := s.client.CurrentUser(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not get current user: %w", err)
 	}
 	return &music.User{
-		DisplayName: clientUser.DisplayName,
-		ID:          clientUser.ID,
+		DisplayName: user.DisplayName,
+		ID:          user.ID,
 	}, nil
 }
 
@@ -75,13 +111,16 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "couldn't get token", http.StatusForbidden)
 		fmt.Fprintln(os.Stderr, err)
+		ch <- nil
+		return
 	}
 	if st := r.FormValue("state"); st != state {
 		http.NotFound(w, r)
 		fmt.Fprintf(os.Stderr, "State mismatch: %s != %s\n", st, state)
+		ch <- nil
+		return
 	}
 	// use the token to get an authenticated client
-	client := spotify.New(auth.Client(r.Context(), tok))
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprintf(w, `
@@ -94,11 +133,5 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
         </html>
     `)
 
-	// set password
-	err = keyring.Set("trackvault", "spotify", tok.RefreshToken)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "could not store refresh token in keyring:", err)
-	}
-
-	ch <- client
+	ch <- tok
 }
