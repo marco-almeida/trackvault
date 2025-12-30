@@ -41,7 +41,7 @@ func NewSpotifyClient() music.Provider {
 	return &SpotifyClient{}
 }
 
-func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
+func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) (*music.User, error) {
 	http.HandleFunc("/spotify/callback", completeAuth)
 	go http.ListenAndServe(fmt.Sprintf("%s:%s", redirectHost, redirectPort), nil) //nolint:errcheck
 
@@ -59,7 +59,14 @@ func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
 	client := <-ch
 
 	s.Client = client
-	return nil
+	clientUser, err := client.CurrentUser(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("could not get current user: %w", err)
+	}
+	return &music.User{
+		DisplayName: clientUser.DisplayName,
+		ID:          clientUser.ID,
+	}, nil
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {

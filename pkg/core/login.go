@@ -18,13 +18,12 @@ const providerNameSpotify = "spotify"
 func Login(ctx context.Context, args LoginArgs) (music.Provider, error) {
 	switch strings.ToLower(args.Provider) {
 	case providerNameSpotify:
-		// TODO: check if already logged in.
 		spotifyClient := spotify.NewSpotifyClient()
-		err := spotifyClient.Login(ctx, music.LoginArgs{})
+		user, err := spotifyClient.Login(ctx, music.LoginArgs{})
 		if err != nil {
 			return nil, fmt.Errorf("error logging in to Spotify: %w", err)
 		}
-		fmt.Printf("Successfully logged in to Spotify!\n")
+		fmt.Printf("Logged in to Spotify as %s (%s)\n", user.DisplayName, user.ID)
 		return spotifyClient, nil
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", args.Provider)
