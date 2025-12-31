@@ -3,6 +3,7 @@ package spotify
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -25,8 +26,14 @@ const (
 )
 
 var (
+	scopes = []string{
+		spotifyauth.ScopeUserReadPrivate,
+		spotifyauth.ScopePlaylistReadPrivate,
+		spotifyauth.ScopePlaylistReadCollaborative,
+		spotifyauth.ScopeUserLibraryRead,
+	}
 	redirectURI     = fmt.Sprintf("http://%s:%s/spotify/callback", redirectHost, redirectPort)
-	auth            = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopeUserReadPrivate), spotifyauth.WithClientID(clientID))
+	auth            = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(scopes...), spotifyauth.WithClientID(clientID))
 	ch              = make(chan *oauth2.Token)
 	state           = uuid.New().String()
 	codeVerifier, _ = pkce.NewCodeVerifier(-1)
@@ -35,6 +42,7 @@ var (
 
 type SpotifyClient struct {
 	client *spotify.Client
+	auth   *spotifyauth.Authenticator
 }
 
 // NewSpotifyClient creates an empty SpotifyClient, it needs to be logged in later
@@ -46,10 +54,41 @@ func NewSpotifyClient() music.Provider {
 func NewSpotifyClientFromToken(ctx context.Context, token oauth2.Token) music.Provider {
 	httpClient := auth.Client(ctx, &token)
 	spotifyClient := spotify.New(httpClient, spotify.WithRetry(true))
-	return &SpotifyClient{client: spotifyClient}
+	return &SpotifyClient{client: spotifyClient, auth: auth}
 }
 
-func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
+func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error { // TODO: this is weird, should probably make this the newClient
+	completeAuth := func(w http.ResponseWriter, r *http.Request) {
+		tok, err := auth.Token(r.Context(), state, r,
+			oauth2.SetAuthURLParam("code_verifier", codeVerifier))
+		if err != nil {
+			http.Error(w, "couldn't get token", http.StatusForbidden)
+			fmt.Fprintln(os.Stderr, err)
+			ch <- nil
+			return
+		}
+		if st := r.FormValue("state"); st != state {
+			http.NotFound(w, r)
+			fmt.Fprintf(os.Stderr, "State mismatch: %s != %s\n", st, state)
+			ch <- nil
+			return
+		}
+		// use the token to get an authenticated client
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, `
+        <html>
+            <body>
+                <h2>Login completed!</h2>
+                <p>You can now return to the terminal.</p>
+                <script>window.close()</script>
+            </body>
+        </html>
+    `)
+
+		ch <- tok
+	}
+
 	http.HandleFunc("/spotify/callback", completeAuth)
 	go http.ListenAndServe(fmt.Sprintf("%s:%s", redirectHost, redirectPort), nil) //nolint:errcheck
 
@@ -69,6 +108,7 @@ func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
 		return fmt.Errorf("could not get token from callback")
 	}
 	s.client = spotify.New(auth.Client(ctx, token), spotify.WithRetry(true))
+	s.auth = auth
 
 	// store token in keyring
 	tokenJson, err := json.Marshal(token)
@@ -85,15 +125,6 @@ func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
 	return nil
 }
 
-func (s *SpotifyClient) ListPlaylistsAndLikes(ctx context.Context, args music.ListPlaylistsAndLikesArgs) ([]music.Playlist, error) {
-	user, err := s.client.CurrentUser(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("could not get current user: %w", err)
-	}
-	fmt.Printf("Listing playlists and likes for spotify user %s (%s)\n", user.DisplayName, user.ID)
-	return nil, nil
-}
-
 func (s *SpotifyClient) User(ctx context.Context) (*music.User, error) {
 	user, err := s.client.CurrentUser(ctx)
 	if err != nil {
@@ -105,33 +136,109 @@ func (s *SpotifyClient) User(ctx context.Context) (*music.User, error) {
 	}, nil
 }
 
-func completeAuth(w http.ResponseWriter, r *http.Request) {
-	tok, err := auth.Token(r.Context(), state, r,
-		oauth2.SetAuthURLParam("code_verifier", codeVerifier))
+func (s *SpotifyClient) ListUserPlaylists(ctx context.Context, args music.ListUserPlaylistsArgs) ([]music.Playlist, error) {
+	user, err := s.client.CurrentUser(ctx)
 	if err != nil {
-		http.Error(w, "couldn't get token", http.StatusForbidden)
-		fmt.Fprintln(os.Stderr, err)
-		ch <- nil
-		return
+		return nil, fmt.Errorf("could not get current user: %w", err)
 	}
-	if st := r.FormValue("state"); st != state {
-		http.NotFound(w, r)
-		fmt.Fprintf(os.Stderr, "State mismatch: %s != %s\n", st, state)
-		ch <- nil
-		return
-	}
-	// use the token to get an authenticated client
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, `
-        <html>
-            <body>
-                <h2>Login completed!</h2>
-                <p>You can now return to the terminal.</p>
-                <script>window.close()</script>
-            </body>
-        </html>
-    `)
 
-	ch <- tok
+	playlistPage, err := s.client.CurrentUsersPlaylists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("could not get user playlists: %w", err)
+	}
+
+	ownedPlaylists := make([]music.Playlist, 0)
+
+	for page := 1; ; page++ {
+		for _, playlist := range playlistPage.Playlists {
+			if playlist.Owner.ID == user.ID {
+				ownedPlaylists = append(ownedPlaylists, music.Playlist{
+					Name: playlist.Name,
+					ID:   playlist.ID.String(),
+				})
+			}
+		}
+		err = s.client.NextPage(ctx, playlistPage)
+		if errors.Is(err, spotify.ErrNoMorePages) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("could not get next page of playlists: %w", err)
+		}
+	}
+
+	return ownedPlaylists, nil
 }
+
+func (s *SpotifyClient) ListTracksInPlaylist(ctx context.Context, playlist music.Playlist) ([]music.Track, error) {
+	tracksList := make([]music.Track, 0)
+	playlistTracks, err := s.client.GetPlaylistItems(ctx, spotify.ID(playlist.ID))
+	if err != nil {
+		return nil, fmt.Errorf("could not get tracks for playlist %s: %w", playlist.Name, err)
+	}
+
+	for page := 1; ; page++ {
+		for _, playlistItem := range playlistTracks.Items {
+			track := playlistItem.Track.Track
+			if track == nil {
+				fmt.Fprintf(os.Stderr, "Cant get details for track in playlist %s (%s)\n", playlist.Name, playlist.ID)
+				continue
+			}
+			artists := make([]string, 0)
+			for _, artist := range track.Artists {
+				artists = append(artists, artist.Name)
+			}
+			tracksList = append(tracksList, music.Track{
+				Name:    track.Name,
+				Artists: artists,
+				Album:   track.Album.Name,
+				ID:      track.ID.String(),
+			})
+		}
+		err = s.client.NextPage(ctx, playlistTracks)
+		if errors.Is(err, spotify.ErrNoMorePages) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("could not get next page of tracks: %w", err)
+		}
+	}
+	return tracksList, nil
+}
+
+func (s *SpotifyClient) ListSavedTracks(ctx context.Context, args music.ListSavedTracksArgs) ([]music.Track, error) {
+	savedTracksList := make([]music.Track, 0)
+	savedTracks, err := s.client.CurrentUsersTracks(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("could not get user saved tracks: %w", err)
+	}
+
+	for page := 1; ; page++ {
+		for _, track := range savedTracks.Tracks {
+			artists := make([]string, 0)
+			for _, artist := range track.Artists {
+				artists = append(artists, artist.Name)
+			}
+			savedTracksList = append(savedTracksList, music.Track{
+				Name:    track.Name,
+				Artists: artists,
+				Album:   track.Album.Name,
+				ID:      track.ID.String(),
+			})
+		}
+		err = s.client.NextPage(ctx, savedTracks)
+		if errors.Is(err, spotify.ErrNoMorePages) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("could not get next page of saved tracks: %w", err)
+		}
+	}
+
+	return savedTracksList, nil
+}
+
+// func (s *SpotifyClient) checkToken(ctx context.Context) (error) {
+// 	token, err := s.client.Token()
+// 	s.auth.RefreshToken()
+// }
