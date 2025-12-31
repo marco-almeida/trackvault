@@ -13,19 +13,25 @@ type LoginArgs struct {
 	Provider string
 }
 
-const providerNameSpotify = "spotify"
+const ProviderNameSpotify = "spotify"
 
 func Login(ctx context.Context, args LoginArgs) (music.Provider, error) {
+	var musicProvider music.Provider
 	switch strings.ToLower(args.Provider) {
-	case providerNameSpotify:
-		spotifyClient := spotify.NewSpotifyClient()
-		user, err := spotifyClient.Login(ctx, music.LoginArgs{})
-		if err != nil {
-			return nil, fmt.Errorf("error logging in to Spotify: %w", err)
-		}
-		fmt.Printf("Logged in to Spotify as %s (%s)\n", user.DisplayName, user.ID)
-		return spotifyClient, nil
+	case ProviderNameSpotify:
+		musicProvider = spotify.NewSpotifyClient()
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", args.Provider)
 	}
+
+	err := musicProvider.Login(ctx, music.LoginArgs{})
+	if err != nil {
+		return nil, fmt.Errorf("error logging in to %s: %w", args.Provider, err)
+	}
+	user, err := musicProvider.User(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting user info from %s: %w", args.Provider, err)
+	}
+	fmt.Printf("Logged in to %s as %s (%s)\n", args.Provider, user.DisplayName, user.ID)
+	return musicProvider, nil
 }
