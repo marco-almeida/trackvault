@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/marco-almeida/trackvault/compare/v1.1.2...v1.2.0) (2025-12-31)
+
+
+### Features
+
+* add backup command ([#22](https://github.com/marco-almeida/trackvault/issues/22)) ([40e83be](https://github.com/marco-almeida/trackvault/commit/40e83bece6e8402d06ac430f361a7f080c9bf354))
+* better login UX ([#19](https://github.com/marco-almeida/trackvault/issues/19)) ([632b277](https://github.com/marco-almeida/trackvault/commit/632b2777429620b1b2d25f9267276bebd80b04dd))
+
 ## [1.1.2](https://github.com/marco-almeida/trackvault/compare/v1.1.1...v1.1.2) (2025-12-28)
 
 
