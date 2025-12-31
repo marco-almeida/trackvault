@@ -6,12 +6,23 @@ import (
 
 type Provider interface {
 	Login(context.Context, LoginArgs) error
-	ListPlaylistsAndLikes(context.Context, ListPlaylistsAndLikesArgs) ([]Playlist, error)
 	User(context.Context) (*User, error)
+	ListUserPlaylists(context.Context, ListUserPlaylistsArgs) ([]Playlist, error)
+	ListSavedTracks(context.Context, ListSavedTracksArgs) ([]Track, error)
+	ListTracksInPlaylist(context.Context, Playlist) ([]Track, error)
 }
 
 type Playlist struct {
-	ID string
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsVirtual bool   `json:"is_virtual"`
+}
+
+type Track struct {
+	ID      string   `json:"id"`
+	Artists []string `json:"artists"`
+	Name    string   `json:"name"`
+	Album   string   `json:"album"`
 }
 
 type User struct {
@@ -21,4 +32,6 @@ type User struct {
 
 type LoginArgs struct{}
 
-type ListPlaylistsAndLikesArgs struct{}
+type ListUserPlaylistsArgs struct{}
+
+type ListSavedTracksArgs struct{}

@@ -14,7 +14,7 @@ import (
 	"github.com/marco-almeida/trackvault/pkg/core"
 )
 
-const destinationPathFlagName = "dest"
+const destinationPathFlagName = "output"
 
 // backupCmd represents the backup command
 var backupCmd = &cobra.Command{
@@ -39,18 +39,17 @@ var backupCmd = &cobra.Command{
 			DestinationPath: destinationPath,
 		}
 
-		playlists, err := core.ListPlaylistsAndLikes(cmd.Context(), backupArgs)
+		err = core.Backup(cmd.Context(), backupArgs)
 		if err != nil {
 			return fmt.Errorf("error backing up %s data: %w", provider, err)
 		}
-		fmt.Println("Playlists ", playlists)
 		return nil
 	},
 }
 
 func init() {
-	backupCmd.PersistentFlags().StringP(providerFlagName, "p", "", "Provider to login to")
-	backupCmd.PersistentFlags().StringP(destinationPathFlagName, "d", "", "Destination path for the backup")
+	backupCmd.PersistentFlags().StringP(providerFlagName, "p", "", "Selected music provider")
+	backupCmd.PersistentFlags().StringP(destinationPathFlagName, "o", "", "Destination path for the backup")
 
 	err := backupCmd.MarkPersistentFlagRequired(providerFlagName)
 	if err != nil {
