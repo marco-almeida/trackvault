@@ -4,6 +4,10 @@ TrackVault is a CLI tool to back up and restore Spotify library data.
 
 It supports backing up liked songs and playlists (including private ones) and restoring them into a new account using portable backup files.
 
+This tool requires your own Spotify Developer App\
+In dev mode, only whitelisted accounts work\
+This is a Spotify limitation, not a TrackVault bug
+
 ## Features
 
 - Spotify OAuth authentication
