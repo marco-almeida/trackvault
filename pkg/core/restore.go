@@ -16,9 +16,9 @@ import (
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
+	"github.com/marco-almeida/trackvault/internal/spotify"
 	"github.com/marco-almeida/trackvault/pkg"
 	"github.com/marco-almeida/trackvault/pkg/models"
-	"github.com/marco-almeida/trackvault/internal/spotify"
 )
 
 type RestoreArgs struct {

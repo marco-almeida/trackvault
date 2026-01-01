@@ -10,8 +10,8 @@ import (
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
-	"github.com/marco-almeida/trackvault/pkg"
 	"github.com/marco-almeida/trackvault/internal/spotify"
+	"github.com/marco-almeida/trackvault/pkg"
 )
 
 type LoginArgs struct {

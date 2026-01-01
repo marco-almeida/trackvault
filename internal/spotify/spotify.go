@@ -13,9 +13,9 @@ import (
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"
 
+	utilsURL "github.com/marco-almeida/trackvault/internal/utils"
 	"github.com/marco-almeida/trackvault/pkg"
 	"github.com/marco-almeida/trackvault/pkg/models"
-	utilsURL "github.com/marco-almeida/trackvault/internal/utils"
 )
 
 const (
