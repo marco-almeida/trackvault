@@ -9,6 +9,7 @@ type Playlist struct {
 	IsVirtual   bool   `json:"is_virtual"`
 	IsPublic    bool   `json:"public"`
 	Provider    string `json:"provider"`
+	Owner       string `json:"owner"`
 }
 
 type Track struct {

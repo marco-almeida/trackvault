@@ -6,10 +6,10 @@ It supports backing up liked songs and playlists (including private ones) and re
 
 ## Features
 
-- Spotify OAuth authentication\
-- Backup liked songs and playlists (private included)\
-- Restore backups into a new Spotify account\
-- Platform-agnostic backup format\
+- Spotify OAuth authentication
+- Backup liked songs and playlists (private included)
+- Restore backups into a new Spotify account
+- Platform-agnostic backup format
 - Cross-platform (Windows, macOS, Linux)
 
 ## Installation

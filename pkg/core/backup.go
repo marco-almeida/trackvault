@@ -49,6 +49,11 @@ func Backup(ctx context.Context, args BackupArgs) error {
 		return fmt.Errorf("could not list user playlists: %w", err)
 	}
 
+	user, err := musicProvider.User(ctx)
+	if err != nil {
+		return fmt.Errorf("could not get user: %w", err)
+	}
+
 	// add liked songs as a virtual playlist
 	playlists = append(playlists, models.Playlist{
 		ID:          fmt.Sprintf(likedSongsPlaylistIDFormat, args.Provider),
@@ -57,6 +62,7 @@ func Backup(ctx context.Context, args BackupArgs) error {
 		IsPublic:    false,
 		Description: "Saved tracks by Trackvault",
 		Provider:    "spotify",
+		Owner:       user.ID,
 	})
 
 	fmt.Printf("Found %d playlists (including liked songs)\n", len(playlists))
