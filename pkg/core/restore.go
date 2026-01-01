@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/schollz/progressbar/v3"
+	"github.com/zalando/go-keyring"
+	"golang.org/x/oauth2"
 
 	"github.com/marco-almeida/trackvault/pkg/music"
 	"github.com/marco-almeida/trackvault/pkg/music/spotify"
@@ -25,13 +27,17 @@ type RestoreArgs struct {
 
 func Restore(ctx context.Context, args RestoreArgs) error {
 	var musicProvider music.Provider
+	var err error
 	switch strings.ToLower(args.Provider) {
 	case ProviderNameSpotify:
 		oauthToken, err := getOAuthTokenFromKeyring(args.Provider)
 		if err != nil {
 			return fmt.Errorf("could not get oauth token from keyring: %w", err)
 		}
-		musicProvider = spotify.NewSpotifyClientFromToken(ctx, oauthToken)
+		musicProvider, err = getSpotifyClientFromToken(ctx, oauthToken)
+		if err != nil {
+			return fmt.Errorf("could not create spotify client: %w", err)
+		}
 	default:
 		return fmt.Errorf("unsupported provider: %s", args.Provider)
 	}
@@ -49,7 +55,7 @@ func Restore(ctx context.Context, args RestoreArgs) error {
 	}
 
 	// backup folder must exist and must have the backups
-	_, err := os.Stat(finalDestinationPath)
+	_, err = os.Stat(finalDestinationPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("backup directory %s does not exist", finalDestinationPath)
@@ -163,4 +169,26 @@ func processPlaylistRestore(ctx context.Context, musicProvider music.Provider, p
 	}
 
 	return nil
+}
+
+func getSpotifyClientFromToken(ctx context.Context, oauthToken oauth2.Token) (music.Provider, error) {
+	musicProvider, newtoken, err := spotify.NewSpotifyClientFromToken(ctx, oauthToken)
+	if err != nil {
+		return nil, fmt.Errorf("could not create spotify client: %w", err)
+	}
+
+	if newtoken != nil && newtoken.ExpiresIn != oauthToken.ExpiresIn {
+		// store newtoken in keyring
+		tokenJson, err := json.Marshal(newtoken)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not marshal token to json:", err)
+		}
+
+		// store oauth newtoken in OS
+		err = keyring.Set("trackvault", "spotify", string(tokenJson))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not store refresh token in keyring:", err)
+		}
+	}
+	return musicProvider, nil
 }

@@ -16,7 +16,6 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/marco-almeida/trackvault/pkg/music"
-	"github.com/marco-almeida/trackvault/pkg/music/spotify"
 )
 
 type BackupArgs struct {
@@ -49,7 +48,10 @@ func Backup(ctx context.Context, args BackupArgs) error {
 		if err != nil {
 			return fmt.Errorf("could not get oauth token from keyring: %w", err)
 		}
-		musicProvider = spotify.NewSpotifyClientFromToken(ctx, oauthToken)
+		musicProvider, err = getSpotifyClientFromToken(ctx, oauthToken)
+		if err != nil {
+			return fmt.Errorf("could not create spotify client: %w", err)
+		}
 	default:
 		return fmt.Errorf("unsupported provider: %s", args.Provider)
 	}
