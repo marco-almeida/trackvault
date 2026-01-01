@@ -10,8 +10,8 @@ import (
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
-	"github.com/marco-almeida/trackvault/pkg/music"
-	"github.com/marco-almeida/trackvault/pkg/music/spotify"
+	"github.com/marco-almeida/trackvault/pkg"
+	"github.com/marco-almeida/trackvault/internal/spotify"
 )
 
 type LoginArgs struct {
@@ -20,8 +20,8 @@ type LoginArgs struct {
 
 const ProviderNameSpotify = "spotify"
 
-func Login(ctx context.Context, args LoginArgs) (music.Provider, error) {
-	var musicProvider music.Provider
+func Login(ctx context.Context, args LoginArgs) (pkg.Provider, error) {
+	var musicProvider pkg.Provider
 	var err error
 	var token oauth2.Token
 	switch strings.ToLower(args.Provider) {

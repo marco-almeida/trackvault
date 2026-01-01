@@ -16,8 +16,9 @@ import (
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
-	"github.com/marco-almeida/trackvault/pkg/music"
-	"github.com/marco-almeida/trackvault/pkg/music/spotify"
+	"github.com/marco-almeida/trackvault/pkg"
+	"github.com/marco-almeida/trackvault/pkg/models"
+	"github.com/marco-almeida/trackvault/internal/spotify"
 )
 
 type RestoreArgs struct {
@@ -26,7 +27,7 @@ type RestoreArgs struct {
 }
 
 func Restore(ctx context.Context, args RestoreArgs) error {
-	var musicProvider music.Provider
+	var musicProvider pkg.Provider
 	var err error
 	switch strings.ToLower(args.Provider) {
 	case ProviderNameSpotify:
@@ -69,8 +70,8 @@ func Restore(ctx context.Context, args RestoreArgs) error {
 		return fmt.Errorf("could not read backup directory: %w", err)
 	}
 
-	var backupMetadata BackupMetadata
-	playlistsWithTracksBackup := make([]PlaylistWithTracksBackup, 0)
+	var backupMetadata models.BackupMetadata
+	playlistsWithTracksBackup := make([]models.PlaylistWithTracksBackup, 0)
 
 	for _, e := range entries {
 		if e.IsDir() {
@@ -88,7 +89,7 @@ func Restore(ctx context.Context, args RestoreArgs) error {
 				return fmt.Errorf("could not unmarshal metadata file: %w", err)
 			}
 		} else {
-			var playlistWithTracksBackup PlaylistWithTracksBackup
+			var playlistWithTracksBackup models.PlaylistWithTracksBackup
 			playlistWithTracksBackupBytes, err := os.ReadFile(filepath.Join(finalDestinationPath, e.Name()))
 			if err != nil {
 				return fmt.Errorf("could not read playlist file: %w", err)
@@ -124,16 +125,16 @@ func Restore(ctx context.Context, args RestoreArgs) error {
 	return err
 }
 
-func processPlaylistRestore(ctx context.Context, musicProvider music.Provider, playlist PlaylistWithTracksBackup) error {
+func processPlaylistRestore(ctx context.Context, musicProvider pkg.Provider, playlist models.PlaylistWithTracksBackup) error {
 	// create playlist
-	createdPlaylist, err := musicProvider.CreatePlaylist(ctx, music.CreatePlaylistArgs{
+	createdPlaylist, err := musicProvider.CreatePlaylist(ctx, pkg.CreatePlaylistArgs{
 		PlaylistDetails: playlist.Playlist,
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "Error while loading resource") {
 			time.Sleep(150 * time.Millisecond)
 			// retry once
-			createdPlaylist, err = musicProvider.CreatePlaylist(ctx, music.CreatePlaylistArgs{
+			createdPlaylist, err = musicProvider.CreatePlaylist(ctx, pkg.CreatePlaylistArgs{
 				PlaylistDetails: playlist.Playlist,
 			})
 		} else {
@@ -145,7 +146,7 @@ func processPlaylistRestore(ctx context.Context, musicProvider music.Provider, p
 		if strings.Contains(err.Error(), "Error while loading resource") {
 			time.Sleep(150 * time.Millisecond)
 			// retry once
-			createdPlaylist, err = musicProvider.CreatePlaylist(ctx, music.CreatePlaylistArgs{
+			createdPlaylist, err = musicProvider.CreatePlaylist(ctx, pkg.CreatePlaylistArgs{
 				PlaylistDetails: playlist.Playlist,
 			})
 		} else {
@@ -160,7 +161,7 @@ func processPlaylistRestore(ctx context.Context, musicProvider music.Provider, p
 	time.Sleep(150 * time.Millisecond)
 
 	// add tracks to playlist
-	_, err = musicProvider.AddTracksToPlaylist(ctx, music.AddTracksToPlaylistArgs{
+	_, err = musicProvider.AddTracksToPlaylist(ctx, pkg.AddTracksToPlaylistArgs{
 		Playlist: createdPlaylist,
 		Tracks:   playlist.Tracks,
 	})
@@ -171,7 +172,7 @@ func processPlaylistRestore(ctx context.Context, musicProvider music.Provider, p
 	return nil
 }
 
-func getSpotifyClientFromToken(ctx context.Context, oauthToken oauth2.Token) (music.Provider, error) {
+func getSpotifyClientFromToken(ctx context.Context, oauthToken oauth2.Token) (pkg.Provider, error) {
 	musicProvider, newtoken, err := spotify.NewSpotifyClientFromToken(ctx, oauthToken)
 	if err != nil {
 		return nil, fmt.Errorf("could not create spotify client: %w", err)

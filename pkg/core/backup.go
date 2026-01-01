@@ -15,24 +15,13 @@ import (
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
-	"github.com/marco-almeida/trackvault/pkg/music"
+	"github.com/marco-almeida/trackvault/pkg"
+	"github.com/marco-almeida/trackvault/pkg/models"
 )
 
 type BackupArgs struct {
 	Provider        string
 	DestinationPath string
-}
-
-type BackupMetadata struct {
-	Provider  string    `json:"provider"`
-	Timestamp time.Time `json:"timestamp"`
-	Result    string    `json:"status"`
-}
-
-type PlaylistWithTracksBackup struct {
-	Playlist      music.Playlist `json:"playlist"`
-	BackupSuccess bool           `json:"backup_success"`
-	Tracks        []music.Track  `json:"tracks"`
 }
 
 var (
@@ -41,7 +30,7 @@ var (
 )
 
 func Backup(ctx context.Context, args BackupArgs) error {
-	var musicProvider music.Provider
+	var musicProvider pkg.Provider
 	switch strings.ToLower(args.Provider) {
 	case ProviderNameSpotify:
 		oauthToken, err := getOAuthTokenFromKeyring(args.Provider)
@@ -55,13 +44,13 @@ func Backup(ctx context.Context, args BackupArgs) error {
 	default:
 		return fmt.Errorf("unsupported provider: %s", args.Provider)
 	}
-	playlists, err := musicProvider.ListUserPlaylists(ctx, music.ListUserPlaylistsArgs{})
+	playlists, err := musicProvider.ListUserPlaylists(ctx, pkg.ListUserPlaylistsArgs{})
 	if err != nil {
 		return fmt.Errorf("could not list user playlists: %w", err)
 	}
 
 	// add liked songs as a virtual playlist
-	playlists = append(playlists, music.Playlist{
+	playlists = append(playlists, models.Playlist{
 		ID:          fmt.Sprintf(likedSongsPlaylistIDFormat, args.Provider),
 		Name:        likedSongsPlaylistName,
 		IsVirtual:   true,
@@ -120,7 +109,7 @@ func Backup(ctx context.Context, args BackupArgs) error {
 	}
 
 	// write metadata to folder
-	metadata := BackupMetadata{
+	metadata := models.BackupMetadata{
 		Provider:  args.Provider,
 		Timestamp: datetimeNow,
 		Result:    resultStatus,
@@ -140,21 +129,21 @@ func Backup(ctx context.Context, args BackupArgs) error {
 	return err
 }
 
-func processPlaylistBackup(ctx context.Context, musicProvider music.Provider, playlist music.Playlist, backupArgs BackupArgs) error {
+func processPlaylistBackup(ctx context.Context, musicProvider pkg.Provider, playlist models.Playlist, backupArgs BackupArgs) error {
 	// handle liked songs virtual playlist
-	var tracks []music.Track
+	var tracks []models.Track
 	var err error
 	if playlist.ID == fmt.Sprintf(likedSongsPlaylistIDFormat, backupArgs.Provider) {
-		tracks, err = musicProvider.ListSavedTracks(ctx, music.ListSavedTracksArgs{})
+		tracks, err = musicProvider.ListSavedTracks(ctx, pkg.ListSavedTracksArgs{})
 	} else {
-		tracks, err = musicProvider.ListTracksInPlaylist(ctx, music.ListTracksInPlaylistArgs{Playlist: playlist})
+		tracks, err = musicProvider.ListTracksInPlaylist(ctx, pkg.ListTracksInPlaylistArgs{Playlist: playlist})
 	}
 
 	if err != nil {
 		return fmt.Errorf("could not list tracks in playlist %s: %w", playlist.Name, err)
 	}
 
-	playlistWithTracks := PlaylistWithTracksBackup{
+	playlistWithTracks := models.PlaylistWithTracksBackup{
 		Playlist:      playlist,
 		BackupSuccess: err == nil,
 		Tracks:        tracks,
