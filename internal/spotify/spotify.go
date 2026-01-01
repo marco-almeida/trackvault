@@ -148,6 +148,7 @@ func (s *SpotifyClient) ListUserPlaylists(ctx context.Context, args pkg.ListUser
 					Description: playlist.Description,
 					IsPublic:    playlist.IsPublic,
 					Provider:    "spotify",
+					Owner:       playlist.Owner.ID,
 				})
 			}
 		}
