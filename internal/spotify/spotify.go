@@ -13,8 +13,9 @@ import (
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"
 
-	"github.com/marco-almeida/trackvault/pkg/music"
-	utilsURL "github.com/marco-almeida/trackvault/pkg/utils"
+	utilsURL "github.com/marco-almeida/trackvault/internal/utils"
+	"github.com/marco-almeida/trackvault/pkg"
+	"github.com/marco-almeida/trackvault/pkg/models"
 )
 
 const (
@@ -46,7 +47,7 @@ type SpotifyClient struct {
 }
 
 // NewSpotifyClientFromToken creates a SpotifyClient from a refresh token. It may return a new token
-func NewSpotifyClientFromToken(ctx context.Context, token oauth2.Token) (music.Provider, *oauth2.Token, error) {
+func NewSpotifyClientFromToken(ctx context.Context, token oauth2.Token) (pkg.Provider, *oauth2.Token, error) {
 	newtoken, err := auth.RefreshToken(ctx, &token)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not refresh token: %v\n", err)
@@ -58,7 +59,7 @@ func NewSpotifyClientFromToken(ctx context.Context, token oauth2.Token) (music.P
 }
 
 // NewSpotifyClient creates a new SpotifyClient. It uses OAuth2 to get a refresh token and so, it starts a webserver and expects the user to complete the login process in the browser
-func NewSpotifyClient(ctx context.Context) (music.Provider, oauth2.Token, error) {
+func NewSpotifyClient(ctx context.Context) (pkg.Provider, oauth2.Token, error) {
 	completeAuth := func(w http.ResponseWriter, r *http.Request) {
 		tok, err := auth.Token(r.Context(), state, r,
 			oauth2.SetAuthURLParam("code_verifier", codeVerifier))
@@ -114,18 +115,18 @@ func NewSpotifyClient(ctx context.Context) (music.Provider, oauth2.Token, error)
 	}, *token, nil
 }
 
-func (s *SpotifyClient) User(ctx context.Context) (*music.User, error) {
+func (s *SpotifyClient) User(ctx context.Context) (*models.User, error) {
 	user, err := s.client.CurrentUser(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not get current user: %w", err)
 	}
-	return &music.User{
+	return &models.User{
 		DisplayName: user.DisplayName,
 		ID:          user.ID,
 	}, nil
 }
 
-func (s *SpotifyClient) ListUserPlaylists(ctx context.Context, args music.ListUserPlaylistsArgs) ([]music.Playlist, error) {
+func (s *SpotifyClient) ListUserPlaylists(ctx context.Context, args pkg.ListUserPlaylistsArgs) ([]models.Playlist, error) {
 	user, err := s.client.CurrentUser(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not get current user: %w", err)
@@ -136,12 +137,12 @@ func (s *SpotifyClient) ListUserPlaylists(ctx context.Context, args music.ListUs
 		return nil, fmt.Errorf("could not get user playlists: %w", err)
 	}
 
-	ownedPlaylists := make([]music.Playlist, 0)
+	ownedPlaylists := make([]models.Playlist, 0)
 
 	for page := 1; ; page++ {
 		for _, playlist := range playlistPage.Playlists {
 			if playlist.Owner.ID == user.ID {
-				ownedPlaylists = append(ownedPlaylists, music.Playlist{
+				ownedPlaylists = append(ownedPlaylists, models.Playlist{
 					Name:        playlist.Name,
 					ID:          playlist.ID.String(),
 					Description: playlist.Description,
@@ -162,8 +163,8 @@ func (s *SpotifyClient) ListUserPlaylists(ctx context.Context, args music.ListUs
 	return ownedPlaylists, nil
 }
 
-func (s *SpotifyClient) ListTracksInPlaylist(ctx context.Context, args music.ListTracksInPlaylistArgs) ([]music.Track, error) {
-	tracksList := make([]music.Track, 0)
+func (s *SpotifyClient) ListTracksInPlaylist(ctx context.Context, args pkg.ListTracksInPlaylistArgs) ([]models.Track, error) {
+	tracksList := make([]models.Track, 0)
 	playlistTracks, err := s.client.GetPlaylistItems(ctx, spotify.ID(args.Playlist.ID))
 	if err != nil {
 		return nil, fmt.Errorf("could not get tracks for playlist %s: %w", args.Playlist.Name, err)
@@ -180,7 +181,7 @@ func (s *SpotifyClient) ListTracksInPlaylist(ctx context.Context, args music.Lis
 			for _, artist := range track.Artists {
 				artists = append(artists, artist.Name)
 			}
-			tracksList = append(tracksList, music.Track{
+			tracksList = append(tracksList, models.Track{
 				Name:    track.Name,
 				Artists: artists,
 				Album:   track.Album.Name,
@@ -198,8 +199,8 @@ func (s *SpotifyClient) ListTracksInPlaylist(ctx context.Context, args music.Lis
 	return tracksList, nil
 }
 
-func (s *SpotifyClient) ListSavedTracks(ctx context.Context, args music.ListSavedTracksArgs) ([]music.Track, error) {
-	savedTracksList := make([]music.Track, 0)
+func (s *SpotifyClient) ListSavedTracks(ctx context.Context, args pkg.ListSavedTracksArgs) ([]models.Track, error) {
+	savedTracksList := make([]models.Track, 0)
 	savedTracks, err := s.client.CurrentUsersTracks(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not get user saved tracks: %w", err)
@@ -211,7 +212,7 @@ func (s *SpotifyClient) ListSavedTracks(ctx context.Context, args music.ListSave
 			for _, artist := range track.Artists {
 				artists = append(artists, artist.Name)
 			}
-			savedTracksList = append(savedTracksList, music.Track{
+			savedTracksList = append(savedTracksList, models.Track{
 				Name:    track.Name,
 				Artists: artists,
 				Album:   track.Album.Name,
@@ -230,19 +231,19 @@ func (s *SpotifyClient) ListSavedTracks(ctx context.Context, args music.ListSave
 	return savedTracksList, nil
 }
 
-func (s *SpotifyClient) CreatePlaylist(ctx context.Context, args music.CreatePlaylistArgs) (music.Playlist, error) {
+func (s *SpotifyClient) CreatePlaylist(ctx context.Context, args pkg.CreatePlaylistArgs) (models.Playlist, error) {
 	user, err := s.User(ctx)
 	if err != nil {
-		return music.Playlist{}, fmt.Errorf("could not get current user: %w", err)
+		return models.Playlist{}, fmt.Errorf("could not get current user: %w", err)
 	}
 
 	// description shouldnt have newlines, spotifys api doesnt like it
 	playlist, err := s.client.CreatePlaylistForUser(ctx, user.ID, args.PlaylistDetails.Name, args.PlaylistDetails.Name, args.PlaylistDetails.IsPublic, false)
 	if err != nil {
-		return music.Playlist{}, fmt.Errorf("could not create playlist with name %s: %w", args.PlaylistDetails.Name, err)
+		return models.Playlist{}, fmt.Errorf("could not create playlist with name %s: %w", args.PlaylistDetails.Name, err)
 	}
 
-	return music.Playlist{
+	return models.Playlist{
 		Name:        playlist.Name,
 		ID:          playlist.ID.String(),
 		Description: playlist.Description,
@@ -251,7 +252,7 @@ func (s *SpotifyClient) CreatePlaylist(ctx context.Context, args music.CreatePla
 	}, nil
 }
 
-func (s *SpotifyClient) AddTracksToPlaylist(ctx context.Context, args music.AddTracksToPlaylistArgs) (music.Playlist, error) {
+func (s *SpotifyClient) AddTracksToPlaylist(ctx context.Context, args pkg.AddTracksToPlaylistArgs) (models.Playlist, error) {
 	maximumTracksPerRequest := 100
 	totalTracks := len(args.Tracks)
 
@@ -266,7 +267,7 @@ func (s *SpotifyClient) AddTracksToPlaylist(ctx context.Context, args music.AddT
 		}
 		_, err := s.client.AddTracksToPlaylist(ctx, spotify.ID(args.Playlist.ID), trackIDs...)
 		if err != nil {
-			return music.Playlist{}, fmt.Errorf("could not add tracks to playlist %s: %w", args.Playlist.Name, err)
+			return models.Playlist{}, fmt.Errorf("could not add tracks to playlist %s: %w", args.Playlist.Name, err)
 		}
 	}
 
