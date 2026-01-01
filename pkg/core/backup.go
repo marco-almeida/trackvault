@@ -36,6 +36,11 @@ type PlaylistWithTracksBackup struct {
 	Tracks        []music.Track  `json:"tracks"`
 }
 
+var (
+	likedSongsPlaylistIDFormat = "%s-collection-liked"
+	likedSongsPlaylistName     = "Liked Songs"
+)
+
 func Backup(ctx context.Context, args BackupArgs) error {
 	var musicProvider music.Provider
 	switch strings.ToLower(args.Provider) {
@@ -44,7 +49,6 @@ func Backup(ctx context.Context, args BackupArgs) error {
 		if err != nil {
 			return fmt.Errorf("could not get oauth token from keyring: %w", err)
 		}
-		fmt.Println("OAuth Token ", oauthToken)
 		musicProvider = spotify.NewSpotifyClientFromToken(ctx, oauthToken)
 	default:
 		return fmt.Errorf("unsupported provider: %s", args.Provider)
@@ -56,9 +60,12 @@ func Backup(ctx context.Context, args BackupArgs) error {
 
 	// add liked songs as a virtual playlist
 	playlists = append(playlists, music.Playlist{
-		ID:        fmt.Sprintf("%s-collection-liked", args.Provider),
-		Name:      "Liked Songs",
-		IsVirtual: true,
+		ID:          fmt.Sprintf(likedSongsPlaylistIDFormat, args.Provider),
+		Name:        likedSongsPlaylistName,
+		IsVirtual:   true,
+		IsPublic:    false,
+		Description: "Saved tracks by Trackvault",
+		Provider:    "spotify",
 	})
 
 	fmt.Printf("Found %d playlists (including liked songs)\n", len(playlists))
@@ -135,10 +142,10 @@ func processPlaylistBackup(ctx context.Context, musicProvider music.Provider, pl
 	// handle liked songs virtual playlist
 	var tracks []music.Track
 	var err error
-	if playlist.ID == fmt.Sprintf("%s-collection-liked", backupArgs.Provider) {
+	if playlist.ID == fmt.Sprintf(likedSongsPlaylistIDFormat, backupArgs.Provider) {
 		tracks, err = musicProvider.ListSavedTracks(ctx, music.ListSavedTracksArgs{})
 	} else {
-		tracks, err = musicProvider.ListTracksInPlaylist(ctx, playlist)
+		tracks, err = musicProvider.ListTracksInPlaylist(ctx, music.ListTracksInPlaylistArgs{Playlist: playlist})
 	}
 
 	if err != nil {
@@ -169,7 +176,6 @@ func getOAuthTokenFromKeyring(provider string) (oauth2.Token, error) {
 	if err != nil {
 		return oauth2.Token{}, fmt.Errorf("could not get oauth token from keyring: %w", err)
 	}
-	fmt.Println(oauthTokenJSON)
 	var oauthToken oauth2.Token
 	err = json.Unmarshal([]byte(oauthTokenJSON), &oauthToken)
 	if err != nil {

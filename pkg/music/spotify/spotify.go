@@ -31,6 +31,8 @@ var (
 		spotifyauth.ScopePlaylistReadPrivate,
 		spotifyauth.ScopePlaylistReadCollaborative,
 		spotifyauth.ScopeUserLibraryRead,
+		spotifyauth.ScopePlaylistModifyPublic,
+		spotifyauth.ScopePlaylistModifyPrivate,
 	}
 	redirectURI     = fmt.Sprintf("http://%s:%s/spotify/callback", redirectHost, redirectPort)
 	auth            = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(scopes...), spotifyauth.WithClientID(clientID))
@@ -52,6 +54,24 @@ func NewSpotifyClient() music.Provider {
 
 // NewSpotifyClientFromToken creates a SpotifyClient from a refresh token
 func NewSpotifyClientFromToken(ctx context.Context, token oauth2.Token) music.Provider {
+	newtoken, err := auth.RefreshToken(ctx, &token)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not refresh token: %v\n", err)
+	}
+
+	if newtoken != nil && newtoken.ExpiresIn != token.ExpiresIn {
+		// store newtoken in keyring
+		tokenJson, err := json.Marshal(newtoken)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not marshal token to json:", err)
+		}
+
+		// store oauth newtoken in OS
+		err = keyring.Set("trackvault", "spotify", string(tokenJson))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not store refresh token in keyring:", err)
+		}
+	}
 	httpClient := auth.Client(ctx, &token)
 	spotifyClient := spotify.New(httpClient, spotify.WithRetry(true))
 	return &SpotifyClient{client: spotifyClient, auth: auth}
@@ -153,8 +173,11 @@ func (s *SpotifyClient) ListUserPlaylists(ctx context.Context, args music.ListUs
 		for _, playlist := range playlistPage.Playlists {
 			if playlist.Owner.ID == user.ID {
 				ownedPlaylists = append(ownedPlaylists, music.Playlist{
-					Name: playlist.Name,
-					ID:   playlist.ID.String(),
+					Name:        playlist.Name,
+					ID:          playlist.ID.String(),
+					Description: playlist.Description,
+					IsPublic:    playlist.IsPublic,
+					Provider:    "spotify",
 				})
 			}
 		}
@@ -170,18 +193,18 @@ func (s *SpotifyClient) ListUserPlaylists(ctx context.Context, args music.ListUs
 	return ownedPlaylists, nil
 }
 
-func (s *SpotifyClient) ListTracksInPlaylist(ctx context.Context, playlist music.Playlist) ([]music.Track, error) {
+func (s *SpotifyClient) ListTracksInPlaylist(ctx context.Context, args music.ListTracksInPlaylistArgs) ([]music.Track, error) {
 	tracksList := make([]music.Track, 0)
-	playlistTracks, err := s.client.GetPlaylistItems(ctx, spotify.ID(playlist.ID))
+	playlistTracks, err := s.client.GetPlaylistItems(ctx, spotify.ID(args.Playlist.ID))
 	if err != nil {
-		return nil, fmt.Errorf("could not get tracks for playlist %s: %w", playlist.Name, err)
+		return nil, fmt.Errorf("could not get tracks for playlist %s: %w", args.Playlist.Name, err)
 	}
 
 	for page := 1; ; page++ {
 		for _, playlistItem := range playlistTracks.Items {
 			track := playlistItem.Track.Track
 			if track == nil {
-				fmt.Fprintf(os.Stderr, "Cant get details for track in playlist %s (%s)\n", playlist.Name, playlist.ID)
+				fmt.Fprintf(os.Stderr, "Cant get details for track in playlist %s (%s)\n", args.Playlist.Name, args.Playlist.ID)
 				continue
 			}
 			artists := make([]string, 0)
@@ -238,7 +261,45 @@ func (s *SpotifyClient) ListSavedTracks(ctx context.Context, args music.ListSave
 	return savedTracksList, nil
 }
 
-// func (s *SpotifyClient) checkToken(ctx context.Context) (error) {
-// 	token, err := s.client.Token()
-// 	s.auth.RefreshToken()
-// }
+func (s *SpotifyClient) CreatePlaylist(ctx context.Context, args music.CreatePlaylistArgs) (music.Playlist, error) {
+	user, err := s.User(ctx)
+	if err != nil {
+		return music.Playlist{}, fmt.Errorf("could not get current user: %w", err)
+	}
+
+	// description shouldnt have newlines, spotifys api doesnt like it
+	playlist, err := s.client.CreatePlaylistForUser(ctx, user.ID, args.PlaylistDetails.Name, args.PlaylistDetails.Name, args.PlaylistDetails.IsPublic, false)
+	if err != nil {
+		return music.Playlist{}, fmt.Errorf("could not create playlist with name %s: %w", args.PlaylistDetails.Name, err)
+	}
+
+	return music.Playlist{
+		Name:        playlist.Name,
+		ID:          playlist.ID.String(),
+		Description: playlist.Description,
+		IsPublic:    playlist.IsPublic,
+		Provider:    "spotify",
+	}, nil
+}
+
+func (s *SpotifyClient) AddTracksToPlaylist(ctx context.Context, args music.AddTracksToPlaylistArgs) (music.Playlist, error) {
+	maximumTracksPerRequest := 100
+	totalTracks := len(args.Tracks)
+
+	for i := 0; i < totalTracks; i += maximumTracksPerRequest {
+		trackIDs := make([]spotify.ID, 0)
+		for j := i; j < i+maximumTracksPerRequest && j < totalTracks; j++ {
+			if args.Tracks[j].ID == "" {
+				fmt.Fprintf(os.Stderr, "WARNING: Track %+v has no ID\n", args.Tracks[j])
+				continue
+			}
+			trackIDs = append(trackIDs, spotify.ID(args.Tracks[j].ID))
+		}
+		_, err := s.client.AddTracksToPlaylist(ctx, spotify.ID(args.Playlist.ID), trackIDs...)
+		if err != nil {
+			return music.Playlist{}, fmt.Errorf("could not add tracks to playlist %s: %w", args.Playlist.Name, err)
+		}
+	}
+
+	return args.Playlist, nil
+}

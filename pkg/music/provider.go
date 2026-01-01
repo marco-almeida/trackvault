@@ -9,13 +9,18 @@ type Provider interface {
 	User(context.Context) (*User, error)
 	ListUserPlaylists(context.Context, ListUserPlaylistsArgs) ([]Playlist, error)
 	ListSavedTracks(context.Context, ListSavedTracksArgs) ([]Track, error)
-	ListTracksInPlaylist(context.Context, Playlist) ([]Track, error)
+	ListTracksInPlaylist(context.Context, ListTracksInPlaylistArgs) ([]Track, error)
+	CreatePlaylist(context.Context, CreatePlaylistArgs) (Playlist, error)
+	AddTracksToPlaylist(context.Context, AddTracksToPlaylistArgs) (Playlist, error)
 }
 
 type Playlist struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	IsVirtual bool   `json:"is_virtual"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	IsVirtual   bool   `json:"is_virtual"`
+	IsPublic    bool   `json:"public"`
+	Provider    string `json:"provider"`
 }
 
 type Track struct {
@@ -35,3 +40,16 @@ type LoginArgs struct{}
 type ListUserPlaylistsArgs struct{}
 
 type ListSavedTracksArgs struct{}
+
+type ListTracksInPlaylistArgs struct {
+	Playlist Playlist
+}
+
+type CreatePlaylistArgs struct {
+	PlaylistDetails Playlist
+}
+
+type AddTracksToPlaylistArgs struct {
+	Playlist Playlist
+	Tracks   []Track
+}
