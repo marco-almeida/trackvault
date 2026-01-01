@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/marco-almeida/trackvault/compare/v1.2.0...v1.3.0) (2026-01-01)
+
+
+### Features
+
+* add restore command ([#23](https://github.com/marco-almeida/trackvault/issues/23)) ([81fdff9](https://github.com/marco-almeida/trackvault/commit/81fdff90664cf5b4735c082bb86b8afd81428c6c))
+
 ## [1.2.0](https://github.com/marco-almeida/trackvault/compare/v1.1.2...v1.2.0) (2025-12-31)
 
 
