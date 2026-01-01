@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/marco-almeida/trackvault/compare/v1.3.0...v1.4.0) (2026-01-01)
+
+
+### Features
+
+* added more data to backups ([#28](https://github.com/marco-almeida/trackvault/issues/28)) ([2c2f804](https://github.com/marco-almeida/trackvault/commit/2c2f804dc74d53e5d116af7f22ae3b3d62ade7b7))
+
 ## [1.3.0](https://github.com/marco-almeida/trackvault/compare/v1.2.0...v1.3.0) (2026-01-01)
 
 
