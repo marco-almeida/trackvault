@@ -2,8 +2,13 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
+
+	"github.com/zalando/go-keyring"
+	"golang.org/x/oauth2"
 
 	"github.com/marco-almeida/trackvault/pkg/music"
 	"github.com/marco-almeida/trackvault/pkg/music/spotify"
@@ -17,17 +22,29 @@ const ProviderNameSpotify = "spotify"
 
 func Login(ctx context.Context, args LoginArgs) (music.Provider, error) {
 	var musicProvider music.Provider
+	var err error
+	var token oauth2.Token
 	switch strings.ToLower(args.Provider) {
 	case ProviderNameSpotify:
-		musicProvider = spotify.NewSpotifyClient()
+		musicProvider, token, err = spotify.NewSpotifyClient(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error creating spotify client: %w", err)
+		}
+		// store token in keyring
+		tokenJson, err := json.Marshal(token)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not marshal token to json:", err)
+		}
+
+		// store oauth token in OS
+		err = keyring.Set("trackvault", "spotify", string(tokenJson))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not store refresh token in keyring:", err)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", args.Provider)
 	}
 
-	err := musicProvider.Login(ctx, music.LoginArgs{})
-	if err != nil {
-		return nil, fmt.Errorf("error logging in to %s: %w", args.Provider, err)
-	}
 	user, err := musicProvider.User(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting user info from %s: %w", args.Provider, err)

@@ -5,7 +5,6 @@ import (
 )
 
 type Provider interface {
-	Login(context.Context, LoginArgs) error
 	User(context.Context) (*User, error)
 	ListUserPlaylists(context.Context, ListUserPlaylistsArgs) ([]Playlist, error)
 	ListSavedTracks(context.Context, ListSavedTracksArgs) ([]Track, error)
@@ -34,8 +33,6 @@ type User struct {
 	ID          string
 	DisplayName string
 }
-
-type LoginArgs struct{}
 
 type ListUserPlaylistsArgs struct{}
 

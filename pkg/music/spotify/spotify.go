@@ -2,7 +2,6 @@ package spotify
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/grokify/go-pkce"
-	"github.com/zalando/go-keyring"
 	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"
@@ -47,37 +45,20 @@ type SpotifyClient struct {
 	auth   *spotifyauth.Authenticator
 }
 
-// NewSpotifyClient creates an empty SpotifyClient, it needs to be logged in later
-func NewSpotifyClient() music.Provider {
-	return &SpotifyClient{}
-}
-
-// NewSpotifyClientFromToken creates a SpotifyClient from a refresh token
-func NewSpotifyClientFromToken(ctx context.Context, token oauth2.Token) music.Provider {
+// NewSpotifyClientFromToken creates a SpotifyClient from a refresh token. It may return a new token
+func NewSpotifyClientFromToken(ctx context.Context, token oauth2.Token) (music.Provider, *oauth2.Token, error) {
 	newtoken, err := auth.RefreshToken(ctx, &token)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not refresh token: %v\n", err)
 	}
 
-	if newtoken != nil && newtoken.ExpiresIn != token.ExpiresIn {
-		// store newtoken in keyring
-		tokenJson, err := json.Marshal(newtoken)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "could not marshal token to json:", err)
-		}
-
-		// store oauth newtoken in OS
-		err = keyring.Set("trackvault", "spotify", string(tokenJson))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "could not store refresh token in keyring:", err)
-		}
-	}
 	httpClient := auth.Client(ctx, &token)
 	spotifyClient := spotify.New(httpClient, spotify.WithRetry(true))
-	return &SpotifyClient{client: spotifyClient, auth: auth}
+	return &SpotifyClient{client: spotifyClient, auth: auth}, newtoken, nil
 }
 
-func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error { // TODO: this is weird, should probably make this the newClient
+// NewSpotifyClient creates a new SpotifyClient. It uses OAuth2 to get a refresh token and so, it starts a webserver and expects the user to complete the login process in the browser
+func NewSpotifyClient(ctx context.Context) (music.Provider, oauth2.Token, error) {
 	completeAuth := func(w http.ResponseWriter, r *http.Request) {
 		tok, err := auth.Token(r.Context(), state, r,
 			oauth2.SetAuthURLParam("code_verifier", codeVerifier))
@@ -99,8 +80,7 @@ func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
 		_, _ = fmt.Fprintf(w, `
         <html>
             <body>
-                <h2>Login completed!</h2>
-                <p>You can now return to the terminal.</p>
+                <h2>Login completed! You can now return to the terminal.</h2>
                 <script>window.close()</script>
             </body>
         </html>
@@ -125,24 +105,13 @@ func (s *SpotifyClient) Login(ctx context.Context, args music.LoginArgs) error {
 	// wait for auth to complete
 	token := <-ch
 	if token == nil {
-		return fmt.Errorf("could not get token from callback")
-	}
-	s.client = spotify.New(auth.Client(ctx, token), spotify.WithRetry(true))
-	s.auth = auth
-
-	// store token in keyring
-	tokenJson, err := json.Marshal(token)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "could not marshal token to json:", err)
+		return nil, oauth2.Token{}, fmt.Errorf("could not get token from callback")
 	}
 
-	// store oauth token in OS
-	err = keyring.Set("trackvault", "spotify", string(tokenJson))
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "could not store refresh token in keyring:", err)
-	}
-
-	return nil
+	return &SpotifyClient{
+		client: spotify.New(auth.Client(ctx, token), spotify.WithRetry(true)),
+		auth:   auth,
+	}, *token, nil
 }
 
 func (s *SpotifyClient) User(ctx context.Context) (*music.User, error) {
