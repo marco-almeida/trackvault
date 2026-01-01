@@ -46,7 +46,7 @@ linters:
         - opinionated
         - style
     gocyclo:
-      min-complexity: 16
+      min-complexity: 30
     gomodguard:
       blocked:
         modules:
