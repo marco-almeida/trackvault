@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>trackvault — back up and restore your Spotify library</title>
+<meta name="description" content="TrackVault is a cross-platform CLI that backs up your Spotify liked songs and playlists (private included) as portable JSON, and restores them into a new account.">
+<style>
+  :root {
+    --bg: #0d100f;
+    --panel: #111514;
+    --border: #242d28;
+    --fg: #c8d4cc;
+    --muted: #6b7a70;
+    --green: #8fd694;
+    --cyan: #6cc5d9;
+    --amber: #e0b05c;
+    --red: #e07a6e;
+    --prompt: #8fd694;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  ::selection { background: #2a4a33; color: #eaffea; }
+
+  /* ---- top bar (sticky) ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(13, 16, 15, 0.94);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 20px;
+    font-size: 13px;
+  }
+  .topbar .dot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+  .dot.r { background: #e07a6e; } .dot.y { background: #e0b05c; } .dot.g { background: #8fd694; }
+  .topbar .title { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar .title b { color: var(--fg); font-weight: 600; }
+  .topbar .ver { color: var(--amber); white-space: nowrap; }
+
+  main { max-width: 860px; margin: 0 auto; padding: 0 22px 80px; }
+
+  /* ---- section headings, man-page style ---- */
+  section { margin-top: 56px; }
+  section:first-of-type { margin-top: 34px; }
+  .sec {
+    display: flex; align-items: baseline; gap: 10px;
+    color: var(--cyan);
+    font-size: 14px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 18px;
+  }
+  .sec::before { content: attr(data-n); color: var(--amber); }
+  .sec a.anchor { color: var(--muted); text-decoration: none; margin-left: auto; }
+  .sec a.anchor:hover { color: var(--cyan); }
+  h2.sec { font-size: 14px; font-weight: 600; }
+
+  p { margin-bottom: 12px; }
+  .muted { color: var(--muted); }
+  .g { color: var(--green); }
+  .c { color: var(--cyan); }
+  .a { color: var(--amber); }
+  .r { color: var(--red); }
+  b, strong { color: #e4eee7; font-weight: 600; }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---- terminal blocks ---- */
+  .term {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 14px 0 22px;
+    overflow: hidden;
+    position: relative;
+  }
+  .term .term-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+    background: #0f1312;
+  }
+  .term .term-head .dot { width: 9px; height: 9px; }
+  .term-body {
+    padding: 16px 18px;
+    overflow-x: auto;
+    white-space: pre;
+    font-size: 14px;
+    line-height: 1.65;
+    tab-size: 4;
+  }
+  .term-body .ln { display: block; }
+  .prompt { color: var(--prompt); }
+  .prompt::before { content: "$ "; }
+  .out { color: var(--fg); }
+  .out.dim { color: var(--muted); }
+  .flag { color: var(--cyan); }
+  .opt { color: var(--amber); }
+  .cmd-name { color: var(--fg); font-weight: 600; }
+  .hl { color: var(--green); }
+
+  /* copy button */
+  .copy {
+    position: absolute; top: 8px; right: 8px;
+    background: #16201b; color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--mono); font-size: 11px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .copy:hover { color: var(--green); border-color: var(--green); }
+  .copy.ok { color: var(--green); border-color: var(--green); }
+
+  /* ---- TOC / man TOC ---- */
+  .toc {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    font-size: 14px;
+    column-count: 2;
+    column-gap: 40px;
+  }
+  .toc a { display: block; color: var(--fg); text-decoration: none; }
+  .toc a:hover { color: var(--cyan); }
+  .toc a .n { color: var(--amber); margin-right: 8px; display: inline-block; width: 18px; }
+  @media (max-width: 620px) { .toc { column-count: 1; } }
+
+  /* ---- feature list ---- */
+  ul.feats { list-style: none; }
+  ul.feats li {
+    padding: 7px 0 7px 28px;
+    position: relative;
+    border-bottom: 1px dashed #1c2420;
+  }
+  ul.feats li:last-child { border-bottom: none; }
+  ul.feats li::before {
+    content: "✓";
+    position: absolute; left: 2px;
+    color: var(--green);
+  }
+  ul.feats li .sub { display: block; color: var(--muted); font-size: 13px; padding-left: 22px; }
+
+  /* ---- install options ---- */
+  .opt-label {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 26px 0 -6px;
+  }
+  .opt-label .tag { color: var(--green); }
+
+  /* ---- downloads table (ls-style) ---- */
+  .dl-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .dl-table th {
+    text-align: left; color: var(--muted); font-weight: 400;
+    border-bottom: 1px solid var(--border);
+    padding: 6px 10px 6px 0;
+  }
+  .dl-table td {
+    padding: 7px 10px 7px 0;
+    border-bottom: 1px dashed #1c2420;
+    white-space: nowrap;
+  }
+  .dl-table td:first-child { color: var(--muted); }
+  .dl-table td .sz { color: var(--muted); }
+  .dl-table a { color: var(--cyan); }
+  .dl-table a:hover { text-decoration: underline; }
+  .arch-note { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+
+  /* ---- setup steps ---- */
+  .step { margin-bottom: 30px; }
+  .step .step-title {
+    color: var(--fg);
+    font-size: 14.5px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .step .step-title .n { color: var(--amber); margin-right: 8px; }
+
+  /* ---- tree ---- */
+  .tree { font-size: 14px; }
+  .tree .dir { color: var(--cyan); }
+  .tree .file { color: var(--fg); }
+  .tree .meta { color: var(--muted); }
+
+  /* ---- notes ---- */
+  .warn {
+    border-left: 3px solid var(--amber);
+    background: #17130c;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 14px;
+    border-radius: 0 4px 4px 0;
+  }
+  .warn::before { content: "WARNING: "; color: var(--amber); }
+
+  /* ---- footer ---- */
+  footer {
+    margin-top: 70px;
+    border-top: 1px solid var(--border);
+    padding-top: 18px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .eof { color: var(--muted); letter-spacing: 0.2em; text-align: center; margin-top: 40px; }
+
+  .cursor {
+    display: inline-block;
+    width: 9px; height: 16px;
+    background: var(--green);
+    vertical-align: -3px;
+    animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+  <span class="title"><b>trackvault</b> — github.com/marco-almeida/trackvault</span>
+  <span class="ver">v1.4.0</span>
+</div>
+
+<main>
+
+  <!-- ============ 1. SYNOPSIS ============ -->
+  <section id="synopsis">
+    <div class="sec" data-n="1.">Synopsis</div>
+    <p>
+      <b>trackvault</b> is a cross-platform CLI that backs up your Spotify
+      <b>liked songs</b> and <b>every playlist</b> (private ones included) into
+      portable JSON files — and restores them into a <b>new account</b>.
+    </p>
+    <p class="muted">
+      Your library outlives the account it was built on. No web dashboard, no cloud:
+      plain files on your disk, in a format you can inspect with <span class="c">cat</span>.
+    </p>
+    <div class="term">
+      <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;trackvault --help</div>
+      <button class="copy" type="button">copy</button>
+      <div class="term-body"><span class="ln prompt"><span class="cmd-name">trackvault</span> <span class="flag">--help</span></span>
+<span class="ln out dim">TrackVault is a CLI tool to back up and restore Spotify library data.</span>
+<span class="ln out dim">Usage:</span>
+<span class="ln">  <span class="cmd-name">trackvault</span> [command]</span>
+<span class="ln">
+<span class="ln out dim">Available Commands:</span>
+<span class="ln">  <span class="cmd-name">login</span>     Authenticate with a provider (Spotify OAuth / PKCE)</span>
+<span class="ln">  <span class="cmd-name">backup</span>    Back up liked songs and all playlists to a folder</span>
+<span class="ln">  <span class="cmd-name">restore</span>   Recreate a backup in a new (or existing) account</span>
+<span class="ln">  <span class="cmd-name">version</span>   Print version information</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 2. TOC ============ -->
+  <section id="contents">
+    <div class="sec" data-n="2.">Contents</div>
+    <nav class="toc">
+      <a href="#features"><span class="n">3.</span>Features</a>
+      <a href="#install"><span class="n">4.</span>Installation</a>
+      <a href="#downloads"><span class="n">5.</span>Downloads (v1.4.0)</a>
+      <a href="#setup"><span class="n">6.</span>Setup walkthrough</a>
+      <a href="#format"><span class="n">7.</span>Backup format</a>
+      <a href="#notes"><span class="n">8.</span>Notes &amp; disclaimer</a>
+    </nav>
+  </section>
+
+  <!-- ============ 3. FEATURES ============ -->
+  <section id="features">
+    <div class="sec" data-n="3."><a class="anchor" href="#contents">^</a>Features</div>
+    <ul class="feats">
+      <li><b>Spotify OAuth 2.0 / PKCE login</b>
+        <span class="sub">Browser-based auth flow with a local <span class="c">127.0.0.1</span> callback. Tokens are stored in your OS keyring — never in plaintext files.</span></li>
+      <li><b>Backs up liked songs + all playlists</b>
+        <span class="sub">Includes <span class="a">private</span> playlists. v1.4.0 enriched the data captured per playlist.</span></li>
+      <li><b>Restore into a new account</b>
+        <span class="sub">Recreates playlists and re-adds every track, batched in groups of 100 with automatic retries on transient failures.</span></li>
+      <li><b>Portable backup format</b>
+        <span class="sub">Plain, indented JSON in a timestamped folder. Diff it, grep it, commit it, copy it to a USB stick. Platform-agnostic.</span></li>
+      <li><b>Cross-platform</b>
+        <span class="sub">Windows, macOS (Intel + Apple Silicon) and Linux (amd64, arm64, i386).</span></li>
+      <li><b>Zero config for the happy path</b>
+        <span class="sub">One <span class="c">login</span>, one <span class="c">backup</span>, one <span class="c">restore</span>. Defaults do the sensible thing.</span></li>
+    </ul>
+  </section>
+
+  <!-- ============ 4. INSTALLATION ============ -->
+  <section id="install">
+    <div class="sec" data-n="4."><a class="anchor" href="#contents">^</a>Installation</div>
+
+    <p class="opt-label"><span class="tag">[1/2]</span> from source with Go</p>
+    <div class="term">
+      <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;requires Go on your PATH</div>
+      <button class="copy" type="button">copy</button>
+      <div class="term-body"><span class="ln prompt"><span class="cmd-name">go install</span> github.com/marco-almeida/trackvault@latest</span></div>
+    </div>
+    <p class="muted">The binary lands in <span class="c">$(go env GOPATH)/bin</span> — make sure that directory is on your <span class="c">PATH</span>.</p>
+
+    <p class="opt-label"><span class="tag">[2/2]</span> prebuilt binary</p>
+    <p>Grab a release asset from the table below, then:</p>
+    <div class="term">
+      <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;macOS / Linux</div>
+      <button class="copy" type="button">copy</button>
+      <div class="term-body"><span class="ln prompt"><span class="cmd-name">chmod +x</span> trackvault</span></div>
+    </div>
+    <p class="muted">Windows: extract the <span class="c">.zip</span> and put <span class="c">trackvault.exe</span> on your <span class="c">PATH</span>. Verify any asset against <span class="c">trackvault_1.4.0_checksums.txt</span>.</p>
+  </section>
+
+  <!-- ============ 5. DOWNLOADS ============ -->
+  <section id="downloads">
+    <div class="sec" data-n="5."><a class="anchor" href="#contents">^</a>Downloads — v1.4.0</div>
+    <div class="term">
+      <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;releases/tag/v1.4.0</div>
+      <div class="term-body" style="padding: 4px 12px;"><table class="dl-table">
+        <thead><tr><th></th><th>asset</th><th>size</th></tr></thead>
+        <tbody>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_Darwin_arm64.tar.gz">trackvault_Darwin_arm64.tar.gz</a></td><td><span class="sz">2,959,363 B</span></td></tr>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_Darwin_x86_64.tar.gz">trackvault_Darwin_x86_64.tar.gz</a></td><td><span class="sz">3,173,635 B</span></td></tr>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_Linux_arm64.tar.gz">trackvault_Linux_arm64.tar.gz</a></td><td><span class="sz">3,024,110 B</span></td></tr>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_Linux_i386.tar.gz">trackvault_Linux_i386.tar.gz</a></td><td><span class="sz">3,209,107 B</span></td></tr>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_Linux_x86_64.tar.gz">trackvault_Linux_x86_64.tar.gz</a></td><td><span class="sz">3,316,428 B</span></td></tr>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_Windows_arm64.zip">trackvault_Windows_arm64.zip</a></td><td><span class="sz">2,933,404 B</span></td></tr>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_Windows_i386.zip">trackvault_Windows_i386.zip</a></td><td><span class="sz">3,197,186 B</span></td></tr>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_Windows_x86_64.zip">trackvault_Windows_x86_64.zip</a></td><td><span class="sz">3,259,117 B</span></td></tr>
+          <tr><td>-rw</td><td><a href="https://github.com/marco-almeida/trackvault/releases/download/v1.4.0/trackvault_1.4.0_checksums.txt">trackvault_1.4.0_checksums.txt</a></td><td><span class="sz">768 B</span></td></tr>
+        </tbody>
+      </table></div>
+      <p class="arch-note">
+        <span class="c">Darwin_arm64</span> = macOS Apple Silicon · <span class="c">Darwin_x86_64</span> = macOS Intel ·
+        <span class="c">Linux_x86_64</span> / <span class="c">Linux_arm64</span> / <span class="c">Linux_i386</span> = Linux amd64 / ARM 64-bit / 32-bit ·
+        <span class="c">Windows_*</span> = Windows amd64 / ARM64 / 32-bit
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 6. SETUP ============ -->
+  <section id="setup">
+    <div class="sec" data-n="6."><a class="anchor" href="#contents">^</a>Setup walkthrough</div>
+
+    <div class="step">
+      <div class="step-title"><span class="n">6.1</span>Create a Spotify Developer App</div>
+      <p class="muted">
+        TrackVault requires <b>your own</b> Spotify Developer App.
+        Create one at <a href="https://developer.spotify.com/dashboard" rel="noopener">developer.spotify.com/dashboard</a> — the app
+        is only used to open the OAuth flow in your browser; no server is involved.
+      </p>
+      <div class="warn">Your Spotify app is in <b>dev mode</b> until you submit it for review, so only accounts you add as app users/test users can log in. That's a Spotify limitation, not a TrackVault bug.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-title"><span class="n">6.2</span>Login</div>
+      <div class="term">
+        <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;step 1 — authenticate</div>
+        <button class="copy" type="button">copy</button>
+        <div class="term-body"><span class="ln prompt"><span class="cmd-name">trackvault login</span> <span class="flag">--provider</span> spotify</span>
+<span class="ln out dim">Your browser opens the Spotify consent screen. After you approve,</span>
+<span class="ln out dim">the callback arrives on 127.0.0.1 and the token is stored in your OS keyring.</span></div>
+      </div>
+      <p class="muted">
+        Using your own app credentials explicitly? Pass both (required together):
+      </p>
+      <div class="term">
+        <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;optional — explicit client credentials</div>
+        <button class="copy" type="button">copy</button>
+        <div class="term-body"><span class="ln prompt"><span class="cmd-name">trackvault login</span> <span class="flag">--provider</span> spotify <span class="opt">--spotify-id</span> &lt;CLIENT_ID&gt; <span class="opt">--spotify-secret</span> &lt;CLIENT_SECRET&gt;</span></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-title"><span class="n">6.3</span>Backup</div>
+      <div class="term">
+        <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;step 2 — snapshot the library</div>
+        <button class="copy" type="button">copy</button>
+        <div class="term-body"><span class="ln prompt"><span class="cmd-name">trackvault backup</span> <span class="flag">--provider</span> spotify <span class="flag">-o</span> .</span>
+<span class="ln out dim">Progress bar shows per-playlist. Without -o, backups are written to the</span>
+<span class="ln out dim">OS data directory for this user.</span></div>
+      </div>
+      <p class="muted">
+        Each run creates a <b>timestamped folder</b> (<span class="c">YYYY-MM-DDTHH-MM-SSZ</span>),
+        so repeated backups never overwrite each other.
+      </p>
+    </div>
+
+    <div class="step">
+      <div class="step-title"><span class="n">6.4</span>Restore</div>
+      <p class="muted">
+        Log in to the <b>target</b> account first (step 6.2 in the other account), then:
+      </p>
+      <div class="term">
+        <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;step 3 — replay the backup</div>
+        <button class="copy" type="button">copy</button>
+        <div class="term-body"><span class="ln prompt"><span class="cmd-name">trackvault restore</span> <span class="flag">--provider</span> spotify <span class="opt">--source</span> ./backups/2026-01-01T14-32-09Z</span>
+<span class="ln out dim">Omit --source to restore the most recent backup automatically.</span>
+<span class="ln out dim">Playlists are recreated, tracks re-added in batches of 100, with retries.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 7. FORMAT ============ -->
+  <section id="format">
+    <div class="sec" data-n="7."><a class="anchor" href="#contents">^</a>Backup format</div>
+    <p>
+      A backup is a folder: one <span class="c">metadata.json</span> plus one
+      <span class="c">.json</span> file per playlist (named <span class="c">Name_ID.json</span>).
+      No database, no container — just JSON.
+    </p>
+    <div class="term">
+      <div class="term-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp;tree -L 1 backups/2026-01-01T14-32-09Z</div>
+      <div class="term-body tree"><span class="ln"><span class="dir">backups/2026-01-01T14-32-09Z/</span></span>
+<span class="ln">├── <span class="file">metadata.json</span>                 <span class="meta"># backup source, provider, timestamp, counts</span></span>
+<span class="ln">├── <span class="file">Liked_Songs_spotify.json</span>    <span class="meta"># your liked songs</span></span>
+<span class="ln">├── <span class="file">Late_Night_Code_4aX1b.json</span>  <span class="meta"># playlist name + ID</span></span>
+<span class="ln">└── <span class="file">On_Hold_9fQ2c.json</span>          <span class="meta"># …one per playlist, private ones too</span></span></div>
+    </div>
+  </section>
+
+  <!-- ============ 8. NOTES ============ -->
+  <section id="notes">
+    <div class="sec" data-n="8."><a class="anchor" href="#contents">^</a>Notes &amp; disclaimer</div>
+    <ul class="feats">
+      <li><b>Bring your own Developer App</b>
+        <span class="sub">Login uses the Spotify OAuth flow; the app must be yours (see 6.1).</span></li>
+      <li><b>Dev-mode account restriction</b>
+        <span class="sub">Until your Spotify app is submitted, only whitelisted accounts can authenticate — a Spotify-side limitation.</span></li>
+      <li><b>Backups are yours</b>
+        <span class="sub">Copy the timestamped folder anywhere. Restoring needs only that folder and a login to the target account.</span></li>
+    </ul>
+    <div class="warn">TrackVault is <b>not affiliated with Spotify</b>. Spotify is a trademark of its respective owner. Use this tool at your own risk.</div>
+
+    <p style="margin-top:26px;">
+      Source: <a href="https://github.com/marco-almeida/trackvault">github.com/marco-almeida/trackvault</a> ·
+      Releases: <a href="https://github.com/marco-almeida/trackvault/releases">v1.4.0</a>
+    </p>
+  </section>
+
+  <footer>
+    <span class="muted">trackvault v1.4.0 · written in Go · no telemetry, no accounts, no web dashboard</span>
+  </footer>
+  <div class="eof">[ EOF ]</div>
+</main>
+
+<script>
+  // copy buttons: copy the visible command line(s) of their terminal block
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    var term = btn.closest('.term');
+    btn.addEventListener('click', function () {
+      var body = term.querySelector('.term-body');
+      var text = '';
+      body.querySelectorAll('.ln').forEach(function (ln) {
+        var t = ln.textContent.trim();
+        // keep only typed commands (strip the "$" prompt prefix)
+        if (ln.classList.contains('prompt')) text += t.replace(/^\$\s*/, '') + '\n';
+      });
+      text = text.trim();
+      var done = function () {
+        var orig = btn.textContent;
+        btn.textContent = 'copied ✓';
+        btn.classList.add('ok');
+        setTimeout(function () { btn.textContent = orig; btn.classList.remove('ok'); }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+        done();
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
